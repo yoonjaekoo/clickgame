@@ -63,7 +63,6 @@
             cursor: pointer;
             display: block;
             margin: 20px auto 30px auto;
-            /* 이미지 전환 효과 추가 */
             transition: transform 0.05s, box-shadow 0.05s; 
             border-radius: 10px;
         }
@@ -128,8 +127,56 @@
             padding: 10px;
             border-radius: 4px;
             font-weight: bold;
-            color: #d9534f; /* 오류 메시지를 위한 색상 */
+            color: #d9534f;
             min-height: 20px;
+        }
+
+        /* 명예의 전당 스타일 */
+        #hall-of-fame {
+            margin-top: 30px;
+            text-align: left;
+            border-top: 2px solid #3f51b5;
+            padding-top: 20px;
+        }
+
+        #hall-of-fame h2 {
+            text-align: center;
+            color: #3f51b5;
+            margin-bottom: 15px;
+        }
+
+        #leaderboard-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        #leaderboard-list li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px dashed #eee;
+            font-size: 1.1em;
+        }
+
+        #leaderboard-list li:last-child {
+            border-bottom: none;
+        }
+
+        .rank {
+            font-weight: bold;
+            width: 30px;
+            color: #e94e77;
+        }
+
+        .name {
+            flex-grow: 1;
+            padding-left: 10px;
+        }
+
+        .score {
+            font-weight: bold;
+            color: #3f51b5;
         }
     </style>
 </head>
@@ -140,7 +187,7 @@
 
         <!-- 최고 기록 표시 영역 -->
         <div id="high-score-display">
-            <h2>🏆 최고 기록</h2>
+            <h2>🏆 내 최고 기록</h2>
             <span id="best-score">0</span>
             <p id="best-record-info">아직 기록이 없어.</p>
         </div>
@@ -171,6 +218,14 @@
             <input type="text" id="record-message" placeholder="하고 싶은 말 (선택)">
             <button onclick="submitNewRecord()">기록 등록</button>
         </div>
+        
+        <!-- 명예의 전당 영역 -->
+        <div id="hall-of-fame">
+            <h2>🥇 명예의 전당 (Top 10)</h2>
+            <ul id="leaderboard-list">
+                <!-- 랭킹 리스트가 여기에 로드됨 -->
+            </ul>
+        </div>
     </div>
 
     <!-- 
@@ -181,7 +236,7 @@
     <script type="module">
         // 1. 필요한 Firebase 모듈을 CDN에서 import해.
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js';
-        import { getDatabase, ref, onValue, set, serverTimestamp } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js';
+        import { getDatabase, ref, onValue, set, push, serverTimestamp, query, orderByChild, limitToLast } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js';
 
         // 2. 프로젝트 Firebase 설정이야. (DB URL 명시적 추가)
         const firebaseConfig = {
@@ -198,7 +253,11 @@
         // 3. Firebase 초기화 및 Database 참조를 설정해.
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
-        const recordRef = ref(db, 'highScore/bestRecord'); 
+        
+        // 🏆 개인 최고 기록 (메인 화면 표시용)
+        const bestRecordRef = ref(db, 'highScore/bestRecord'); 
+        // 🥇 명예의 전당 (Top 10 리스트용) - 모든 기록이 여기에 쌓임
+        const hallOfFameRef = ref(db, 'hallOfFame/scores');
 
         // 4. UI 요소 및 상태 변수 설정
         const bestScoreEl = document.getElementById('best-score');
@@ -211,14 +270,17 @@
         const recordNameEl = document.getElementById('record-name');
         const recordMessageEl = document.getElementById('record-message');
         const registrationMessageEl = document.getElementById('registration-message');
+        const leaderboardListEl = document.getElementById('leaderboard-list'); // 명예의 전당 리스트
 
         let currentHighScore = 0; 
         let currentClickCount = 0; 
 
         window.submitNewRecord = submitNewRecord; 
 
-        // 5. 최고 기록 실시간 읽기 리스너 설정
-        onValue(recordRef, (snapshot) => {
+        // =======================================================
+        // A. 최고 기록 (메인) 실시간 읽기
+        // =======================================================
+        onValue(bestRecordRef, (snapshot) => {
             const data = snapshot.val();
             if (data && data.score !== undefined) {
                 currentHighScore = parseInt(data.score) || 0; 
@@ -239,8 +301,46 @@
             messageEl.textContent = '데이터를 불러오는 중 오류가 발생했어. 콘솔을 봐줘.';
         });
 
+        // =======================================================
+        // B. 명예의 전당 (Top 10) 실시간 읽기 및 렌더링
+        // =======================================================
+        const top10Query = query(
+            hallOfFameRef, 
+            orderByChild('score'), // 'score' 필드를 기준으로 정렬
+            limitToLast(10)        // 가장 높은 10개만 가져옴
+        );
+
+        onValue(top10Query, (snapshot) => {
+            const records = [];
+            snapshot.forEach((childSnapshot) => {
+                records.push(childSnapshot.val());
+            });
+
+            // Realtime DB의 limitToLast는 오름차순으로 결과를 주므로, 역순으로 뒤집어 최상위 점수가 1등이 되도록 합니다.
+            records.reverse(); 
+
+            leaderboardListEl.innerHTML = ''; // 기존 리스트 초기화
+
+            if (records.length === 0) {
+                leaderboardListEl.innerHTML = '<li style="text-align: center;">아직 랭킹에 등록된 기록이 없어!</li>';
+                return;
+            }
+
+            records.forEach((record, index) => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span class="rank">${index + 1}등</span>
+                    <span class="name">${record.name}</span>
+                    <span class="score">${record.score.toLocaleString()}점</span>
+                `;
+                leaderboardListEl.appendChild(li);
+            });
+        }, (error) => {
+            console.error("명예의 전당 로딩 오류:", error);
+        });
+
+
         // 6. 클릭 버튼 이미지 상호작용 및 카운트 증가 로직
-        // *** 이 부분이 이미지 파일과 동기화되어야 해! ***
         clickerImgEl.addEventListener('mousedown', () => {
             clickerImgEl.src = 'pressed.png'; // 누를 때 이미지 변경
             currentClickCount++; // 카운트 증가
@@ -258,9 +358,9 @@
             clickerImgEl.src = 'unpressed.png'; 
         });
 
-        // 모바일 터치 이벤트 추가 (이미지 문제 해결 시도)
+        // 모바일 터치 이벤트 추가
         clickerImgEl.addEventListener('touchstart', (e) => {
-            e.preventDefault(); // 기본 터치 동작 방지
+            e.preventDefault(); 
             clickerImgEl.src = 'pressed.png';
             currentClickCount++; 
             currentScoreDisplayEl.textContent = currentClickCount.toLocaleString();
@@ -284,7 +384,6 @@
                 return;
             }
             
-            // 갱신 여부 확인
             if (scoreToCheck > currentHighScore) {
                 messageEl.textContent = `축하해! 최고 기록(${currentHighScore.toLocaleString()}점)을 갱신했어!`;
                 registrationMessageEl.textContent = `현재 점수 ${scoreToCheck.toLocaleString()}점으로 최고 기록을 경신했어! 등록해 줘.`;
@@ -297,7 +396,7 @@
             newRecordFormEl.dataset.score = scoreToCheck; 
         }
 
-        // 9. 갱신 기록 등록 로직 (set) 함수
+        // 9. 갱신 기록 등록 로직 (set, push) 함수
         async function submitNewRecord() {
             const name = recordNameEl.value.trim();
             const message = recordMessageEl.value.trim();
@@ -316,7 +415,6 @@
 
             const finalScore = parseInt(scoreToSave);
             
-            // *** 중요 디버깅 로그! 이 점수가 0인지 확인해 줘. ***
             console.log("🔥 Firebase에 최종 저장 시도 점수:", finalScore); 
 
             const newRecord = {
@@ -327,8 +425,13 @@
             };
 
             try {
-                // Realtime Database에 데이터 쓰기 작업을 수행
-                await set(recordRef, newRecord);
+                // 1. 명예의 전당 컬렉션에 새 기록을 추가합니다. (push 사용)
+                await push(hallOfFameRef, newRecord);
+
+                // 2. 만약 현재 최고 기록을 갱신했다면, 메인 화면 최고 기록도 업데이트합니다.
+                if (finalScore > currentHighScore) {
+                    await set(bestRecordRef, newRecord);
+                }
                 
                 // 저장 성공! 카운트 초기화
                 currentClickCount = 0;
@@ -341,7 +444,6 @@
                 newRecordFormEl.dataset.score = 0;
 
             } catch (error) {
-                // *** 중요 디버깅 로그! 여기에 에러 메시지가 뜨면 알려줘. ***
                 console.error("❌ 기록 저장 오류 발생:", error);
                 messageEl.textContent = `기록 저장에 실패했어. 콘솔 창(F12)의 붉은색 오류 메시지를 확인해 줘!`;
             }
