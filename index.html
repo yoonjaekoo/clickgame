@@ -307,7 +307,7 @@
         const top10Query = query(
             hallOfFameRef, 
             orderByChild('score'), // 'score' 필드를 기준으로 정렬
-            limitToLast(10)        // 가장 높은 10개만 가져옴
+            limitToLast(100)        // 가장 높은 10개만 가져옴
         );
 
         onValue(top10Query, (snapshot) => {
