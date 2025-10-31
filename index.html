@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>클릭 카운팅 최고 기록 저장</title>
+    <style>
+        /* CSS 스타일링 */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+            width: 100%;
+            max-width: 450px;
+            text-align: center;
+        }
+
+        #high-score-display {
+            padding: 15px;
+            background-color: #e0f7fa;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            border: 1px solid #00bcd4;
+        }
+
+        #best-score {
+            color: #e94e77; 
+            font-size: 2.5em;
+            font-weight: 900;
+            display: block;
+            margin: 5px 0 10px 0;
+        }
+
+        /* 현재 카운트 표시 */
+        #current-score-display {
+            font-size: 3.5em;
+            font-weight: bold;
+            color: #3f51b5;
+            margin: 20px 0;
+            padding: 10px;
+            border-radius: 8px;
+            background-color: #f0f4ff;
+        }
+        
+        /* 클릭 버튼 이미지 */
+        #clicker-img {
+            width: 100%;
+            max-width: 300px;
+            height: auto;
+            cursor: pointer;
+            display: block;
+            margin: 20px auto 30px auto;
+            transition: transform 0.1s;
+        }
+        
+        #clicker-img:active {
+            transform: scale(0.98);
+        }
+
+        hr {
+            border: 0;
+            height: 1px;
+            background: #ddd;
+            margin: 20px 0;
+        }
+
+        /* 저장 버튼 (텍스트 버튼) */
+        #save-button-btn {
+            background-color: #3f51b5; 
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1.1em;
+            font-weight: bold;
+            box-shadow: 0 4px 0 #303f9f;
+            transition: all 0.1s;
+            margin: 20px auto;
+        }
+
+        #save-button-btn:active {
+            box-shadow: 0 2px 0 #303f9f;
+            transform: translateY(2px);
+        }
+
+        #new-record-form input[type="text"] {
+            width: calc(100% - 22px);
+            padding: 12px;
+            margin: 8px 0;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 1em;
+        }
+        
+        #new-record-form button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 15px;
+            font-size: 1.1em;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+
+        #message {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            color: #007bff;
+            min-height: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>🖱️ 클릭 카운터</h1>
+
+        <!-- 최고 기록 표시 영역 -->
+        <div id="high-score-display">
+            <h2>🏆 최고 기록</h2>
+            <span id="best-score">0</span>
+            <p id="best-record-info">아직 기록이 없습니다.</p>
+        </div>
+
+        <hr>
+
+        <!-- 현재 카운트 및 버튼 영역 -->
+        <div class="current-record">
+            <h3>현재 카운트</h3>
+            <div id="current-score-display">0</div>
+            
+            <!-- 클릭 버튼: 이미지를 사용하며 상호작용합니다. -->
+            <img src="unpressed.png" id="clicker-img" alt="클릭하여 점수 획득">
+            
+            <!-- 저장 버튼: 텍스트 버튼으로 변경되었습니다. -->
+            <button id="save-button-btn">기록 저장</button>
+
+            <p id="message"></p>
+        </div>
+
+        <hr>
+
+        <!-- 기록 갱신 폼 (점수 갱신 시에만 표시) -->
+        <div id="new-record-form" style="display: none;">
+            <h3>🎉 기록 등록</h3>
+            <p id="registration-message">이번 점수를 등록하시려면 정보를 입력해 주십시오.</p>
+            <input type="text" id="record-name" placeholder="이름 (필수)">
+            <input type="text" id="record-message" placeholder="하고 싶은 말 (선택)">
+            <button onclick="submitNewRecord()">기록 등록</button>
+        </div>
+    </div>
+
+    <!-- 
+        =========================================================
+        Firebase 최신 SDK (Module) 및 JavaScript 로직
+        =========================================================
+    -->
+    <script type="module">
+        // 1. 필요한 Firebase 모듈을 CDN에서 import합니다.
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js';
+        import { getDatabase, ref, onValue, set, serverTimestamp } from 'https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js';
+
+        // 2. 프로젝트 Firebase 설정입니다. (사용자 제공 정보)
+        const firebaseConfig = {
+          apiKey: "AIzaSyADFqubXE9l91gMXFcRVKbDyPwrLBgFDWc",
+          authDomain: "clickgame-ecfa0.firebaseapp.com",
+          // 사용자께서 제공해주신 Realtime Database URL을 명시적으로 추가하여 연결을 보장합니다.
+          databaseURL: "https://clickgame-ecfa0-default-rtdb.asia-southeast1.firebasedatabase.app/", 
+          projectId: "clickgame-ecfa0",
+          storageBucket: "clickgame-ecfa0.firebasestorage.app",
+          messagingSenderId: "130304567411",
+          appId: "1:130304567411:web:ec821370216a73f68de206",
+          measurementId: "G-PD8SQZYM9M"
+        };
+
+        // 3. Firebase 초기화 및 Database 참조를 설정합니다.
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const recordRef = ref(db, 'highScore/bestRecord'); 
+
+        // 4. UI 요소 및 상태 변수를 설정합니다.
+        const bestScoreEl = document.getElementById('best-score');
+        const bestRecordInfoEl = document.getElementById('best-record-info');
+        const currentScoreDisplayEl = document.getElementById('current-score-display');
+        const clickerImgEl = document.getElementById('clicker-img'); 
+        const saveButtonBtnEl = document.getElementById('save-button-btn'); 
+        const messageEl = document.getElementById('message');
+        const newRecordFormEl = document.getElementById('new-record-form');
+        const registrationMessageEl = document.getElementById('registration-message'); // 새로 추가된 등록 메시지 요소
+
+        let currentHighScore = 0; 
+        let currentClickCount = 0; 
+
+        window.submitNewRecord = submitNewRecord; 
+
+        // 5. 최고 기록 실시간 읽기 (onValue) 리스너를 설정합니다.
+        onValue(recordRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                currentHighScore = parseInt(data.score) || 0; 
+                bestScoreEl.textContent = currentHighScore.toLocaleString();
+
+                const messageText = data.message ? `"${data.message}"` : '남긴 한마디 없음';
+                // timestamp가 null일 수 있으므로 유효성 검사 추가
+                const date = data.timestamp ? new Date(data.timestamp) : null;
+                const timeStr = date ? `${date.getFullYear()}. ${date.getMonth() + 1}. ${date.getDate()}.` : '날짜 정보 없음';
+                
+                bestRecordInfoEl.textContent = `${data.name}님의 기록 (${timeStr}) - ${messageText}`;
+            } else {
+                currentHighScore = 0;
+                bestScoreEl.textContent = 0;
+                bestRecordInfoEl.textContent = '아직 기록이 없습니다.';
+            }
+        }, (error) => {
+            console.error("Firebase 데이터 읽기 오류:", error);
+            messageEl.textContent = '데이터를 불러오는 중 오류가 발생했습니다.';
+        });
+
+        // 6. 클릭 버튼 이미지 상호작용 및 카운트 증가 로직입니다.
+        clickerImgEl.addEventListener('mousedown', () => {
+            clickerImgEl.src = 'pressed.png'; // 누를 때 이미지 변경
+            currentClickCount++; // 카운트 증가
+            currentScoreDisplayEl.textContent = currentClickCount.toLocaleString();
+            
+            newRecordFormEl.style.display = 'none';
+            messageEl.textContent = '';
+        });
+
+        clickerImgEl.addEventListener('mouseup', () => {
+            clickerImgEl.src = 'unpressed.png'; // 뗄 때 이미지 복원
+        });
+
+        clickerImgEl.addEventListener('mouseleave', () => {
+            clickerImgEl.src = 'unpressed.png'; 
+        });
+
+        // 7. 저장 버튼 클릭 이벤트 리스너를 설정합니다.
+        saveButtonBtnEl.addEventListener('click', checkAndSaveScore);
+
+        // 8. 점수 확인 및 기록 갱신 폼 표시 함수입니다.
+        function checkAndSaveScore() {
+            const scoreToCheck = currentClickCount; 
+            
+            if (scoreToCheck <= 0) { 
+                messageEl.textContent = '클릭을 먼저 하셔야 점수를 저장할 수 있습니다!';
+                newRecordFormEl.style.display = 'none';
+                return;
+            }
+            
+            // 갱신 여부를 확인합니다.
+            if (scoreToCheck > currentHighScore) {
+                messageEl.textContent = `축하드립니다! 최고 기록(${currentHighScore.toLocaleString()}점)을 갱신하셨습니다!`;
+                registrationMessageEl.textContent = `현재 점수 ${scoreToCheck.toLocaleString()}점으로 최고 기록을 경신했습니다! 등록해 주십시오.`;
+            } else {
+                messageEl.textContent = `아쉽지만 최고 기록(${currentHighScore.toLocaleString()}점)을 넘지 못했습니다.`;
+                registrationMessageEl.textContent = `현재 점수 ${scoreToCheck.toLocaleString()}점을 등록하시려면 정보를 입력해 주십시오.`;
+            }
+            
+            newRecordFormEl.style.display = 'block';
+            // 갱신 폼에 점수를 숨겨서 저장합니다.
+            newRecordFormEl.dataset.score = scoreToCheck; 
+        }
+
+        // 9. 갱신 기록 등록 로직 (set) 함수입니다.
+        async function submitNewRecord() {
+            const name = recordNameEl.value.trim();
+            const message = recordMessageEl.value.trim();
+            
+            const scoreToSave = newRecordFormEl.dataset.score;
+            
+            if (!scoreToSave || isNaN(parseInt(scoreToSave))) {
+                 messageEl.textContent = '저장할 점수 정보가 유효하지 않습니다. 다시 시도해 주십시오.';
+                 return;
+            }
+            
+            if (!name) {
+                messageEl.textContent = '이름은 반드시 입력해야 합니다!';
+                return;
+            }
+
+            const finalScore = parseInt(scoreToSave);
+            
+            console.log("Firebase에 저장 시도 점수:", finalScore);
+
+            const newRecord = {
+                score: finalScore,
+                name: name,
+                message: message,
+                timestamp: serverTimestamp() 
+            };
+
+            try {
+                // Realtime Database에 데이터 쓰기 작업을 수행합니다.
+                await set(recordRef, newRecord);
+                
+                // 저장 성공 후 카운트를 초기화합니다.
+                currentClickCount = 0;
+                currentScoreDisplayEl.textContent = 0;
+                
+                messageEl.textContent = `✨ 기록 등록이 완료되었습니다! ${finalScore.toLocaleString()}점을 저장하였습니다.`;
+                newRecordFormEl.style.display = 'none'; 
+                recordNameEl.value = '';
+                recordMessageEl.value = '';
+                newRecordFormEl.dataset.score = 0;
+
+            } catch (error) {
+                console.error("기록 저장 오류:", error);
+                messageEl.textContent = '기록 저장에 실패했습니다. (규칙, DB URL, 네트워크 문제일 수 있습니다.) 콘솔을 확인해 주십시오.';
+            }
+        }
+    </script>
+</body>
+</html>
+
